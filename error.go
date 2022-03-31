@@ -1,5 +1,7 @@
 package gurl
 
+import "fmt"
+
 type ReturnCodeError interface {
 	error
 	Code() int
@@ -18,9 +20,9 @@ func (e *errorWithCode) Code() int {
 	return e.code
 }
 
-func newErrorWithCode(message string, code int) *errorWithCode {
+func newErrorWithCode(code int, message string, args ...any) *errorWithCode {
 	return &errorWithCode{
-		message: message,
+		message: fmt.Sprintf(message, args...),
 		code:    code,
 	}
 }

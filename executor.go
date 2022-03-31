@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 	"net/url"
@@ -40,6 +41,10 @@ func Execute(c *Config) error {
 		return err
 	}
 
+	if c.UserAgent != "" {
+		request.Header.Set("User-Agent", c.UserAgent)
+	}
+
 	for key, values := range c.Headers {
 		for _, value := range values {
 			request.Header.Add(key, value)
@@ -59,7 +64,7 @@ func Execute(c *Config) error {
 		prefix: ">",
 	}
 
-	requestBuilder.Printf("%v %v", request.Method, request.URL.RequestURI())
+	requestBuilder.Printf("%v %v", request.Method, request.URL.String())
 	requestBuilder.WriteHeaders(request.Header)
 	requestBuilder.Println()
 
@@ -71,6 +76,12 @@ func Execute(c *Config) error {
 	if err != nil {
 		return err
 	}
+
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			log.Warn().Err(err).Str("url", c.Url.String()).Msg("failed to close response body")
+		}
+	}()
 
 	responseBuilder := &wrappedBuilder{
 		prefix: "<",

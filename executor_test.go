@@ -1,0 +1,121 @@
+package gurl
+
+import (
+	"bytes"
+	"fmt"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+func TestExecute(t *testing.T) {
+	tt := []struct {
+		name                 string
+		tls                  bool
+		expectedResponseBody string
+		expectedRequestBody  string
+		err                  string
+		requestHeaders       http.Header
+		callback             func(c *Config)
+	}{
+		{
+			name:                 "making a request to a server",
+			expectedResponseBody: "Hello, client\n",
+			requestHeaders: map[string][]string{
+				"Accept-Encoding": {
+					"gzip",
+				},
+				"User-Agent": {
+					"gurl",
+				},
+			},
+		},
+		{
+			name:                 "making a request to a tls server with insecure on",
+			expectedResponseBody: "Hello, client\n",
+			requestHeaders: map[string][]string{
+				"Accept-Encoding": {
+					"gzip",
+				},
+				"User-Agent": {
+					"gurl",
+				},
+			},
+			tls: true,
+			callback: func(c *Config) {
+				c.Insecure = true
+			},
+		},
+		{
+			name:                 "making a request to a tls server with insecure off",
+			expectedResponseBody: "Hello, client\n",
+			tls:                  true,
+			err:                  "x509: “Acme Co” certificate is not trusted",
+			requestHeaders: map[string][]string{
+				"Accept-Encoding": {
+					"gzip",
+				},
+				"User-Agent": {
+					"gurl",
+				},
+			},
+		},
+	}
+
+	for _, ts := range tt {
+		t.Run(ts.name, func(t *testing.T) {
+			var server *httptest.Server
+
+			var receivedHeaders http.Header
+			var requestBody string
+
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedHeaders = r.Header
+
+				if bodyBytes, err := ioutil.ReadAll(r.Body); err != nil {
+					requestBody = string(bodyBytes)
+				}
+
+				fmt.Fprintln(w, "Hello, client")
+			})
+
+			if ts.tls {
+				server = httptest.NewTLSServer(handler)
+			} else {
+				server = httptest.NewServer(handler)
+			}
+
+			defer server.Close()
+
+			responseBody := bytes.NewBuffer(make([]byte, 0, 1024))
+
+			c := &Config{
+				Headers:            map[string][]string{},
+				UserAgent:          "gurl",
+				Method:             http.MethodGet,
+				Url:                mustURL(t, server.URL),
+				ControlOutput:      bytes.NewBuffer(make([]byte, 0, 1024)),
+				ResponseBodyOutput: responseBody,
+			}
+
+			if ts.callback != nil {
+				ts.callback(c)
+			}
+
+			err := Execute(c)
+			if ts.err != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), ts.err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, ts.requestHeaders, receivedHeaders)
+				assert.Equal(t, ts.expectedRequestBody, requestBody)
+				assert.Equal(t, ts.expectedResponseBody, responseBody.String())
+			}
+		})
+	}
+
+}

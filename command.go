@@ -1,7 +1,6 @@
 package gurl
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"net/http"
@@ -20,45 +19,49 @@ func CreateCommand() *cobra.Command {
 	headers := make([]string, 0, 255)
 
 	command := &cobra.Command{
-		Use:   `gurl [options] URL`,
-		Short: `gurl is an HTTP client`,
-		Long:  `gurl is an HTTP client for a tutorial on how to build command line clients in go`,
-		Args: func(cmd *cobra.Command, args []string) error {
-			if l := len(args); l != 1 {
-				return fmt.Errorf("you must provide a single URL to be called but you provided %v", l)
-			}
-
-			u, err := url.Parse(args[0])
-			if err != nil {
-				return errors.Wrapf(err, "the URL provided is invalid: %v", args[0])
-			}
-
-			config.Url = u
-
-			return nil
-		},
-		PreRunE: PreRun(config, headers),
+		Use:     `gurl URL`,
+		Short:   `gurl is an HTTP client`,
+		Long:    `gurl is an HTTP client for a tutorial on how to build command line clients in go`,
+		Args:    ArgsValidator(config),
+		PreRunE: OptionsValidator(config, headers),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return Execute(config)
 		},
 	}
 
-	command.LocalFlags().StringSliceVarP(&headers, "header", "h", nil, `custom header to be sent to the server, can be set multiple times, headers are set as "HeaderName: Header content"`)
-	command.LocalFlags().StringVarP(&config.UserAgent, "user-agent", "u", "gurl", "the user agent to be used for requests")
-	command.LocalFlags().StringVarP(&config.Data, "data", "d", "", "data to be sent as the request body")
-	command.LocalFlags().StringVarP(&config.Method, "method", "m", http.MethodGet, "HTTP method to be used for the request, defaults to GET")
-	command.LocalFlags().BoolVarP(&config.Insecure, "insecure", "k", false, "allows insecure server connections over HTTPS")
+	command.PersistentFlags().StringSliceVarP(&headers, "headers", "H", nil, `custom headers headers to be sent with the request, headers are separated by "," as in "HeaderName: Header content,OtherHeader: Some other value"`)
+	command.PersistentFlags().StringVarP(&config.UserAgent, "user-agent", "u", "gurl", "the user agent to be used for requests")
+	command.PersistentFlags().StringVarP(&config.Data, "data", "d", "", "data to be sent as the request body")
+	command.PersistentFlags().StringVarP(&config.Method, "method", "m", http.MethodGet, "HTTP method to be used for the request")
+	command.PersistentFlags().BoolVarP(&config.Insecure, "insecure", "k", false, "allows insecure server connections over HTTPS")
 
 	return command
 }
 
-func PreRun(c *Config, headers []string) func(cmd *cobra.Command, args []string) error {
+func ArgsValidator(c *Config) func(cmd *cobra.Command, args []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		if l := len(args); l != 1 {
+			return newErrorWithCode(2, "you must provide a single URL to be called but you provided %v", l)
+		}
+
+		u, err := url.Parse(args[0])
+		if err != nil {
+			return errors.Wrapf(err, "the URL provided is invalid: %v", args[0])
+		}
+
+		c.Url = u
+
+		return nil
+	}
+}
+
+func OptionsValidator(c *Config, headers []string) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		for _, h := range headers {
 			if name, value, found := strings.Cut(h, ":"); found {
-				c.Headers.Add(name, value)
+				c.Headers.Add(strings.TrimSpace(name), strings.TrimSpace(value))
 			} else {
-				return errors.Errorf("header is not a valid http header separated by `:`, value was: [%v]", h)
+				return newErrorWithCode(3, "header is not a valid http header separated by `:`, value was: [%v]", h)
 			}
 		}
 
