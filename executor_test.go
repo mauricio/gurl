@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
@@ -19,10 +20,12 @@ func TestExecute(t *testing.T) {
 		expectedRequestBody  string
 		err                  string
 		requestHeaders       http.Header
+		method               string
 		callback             func(c *Config)
 	}{
 		{
 			name:                 "making a request to a server",
+			method:               http.MethodGet,
 			expectedResponseBody: "Hello, client\n",
 			requestHeaders: map[string][]string{
 				"Accept-Encoding": {
@@ -34,7 +37,38 @@ func TestExecute(t *testing.T) {
 			},
 		},
 		{
+			name:                 "making a POST request to a server",
+			method:               http.MethodPost,
+			expectedRequestBody:  "email=user%40example.com&name=user",
+			expectedResponseBody: "Hello, client\n",
+			requestHeaders: map[string][]string{
+				"Accept-Encoding": {
+					"gzip",
+				},
+				"User-Agent": {
+					"gurl",
+				},
+				"Content-Type": {
+					"application/x-www-form-urlencoded",
+				},
+				"Content-Length": {
+					"34",
+				},
+			},
+			callback: func(c *Config) {
+				params := url.Values{}
+				params.Add("name", "user")
+				params.Add("email", "user@example.com")
+				c.Data = params.Encode()
+
+				c.Method = http.MethodPost
+
+				c.Headers.Add("Content-Type", "application/x-www-form-urlencoded")
+			},
+		},
+		{
 			name:                 "making a request to a tls server with insecure on",
+			method:               http.MethodGet,
 			expectedResponseBody: "Hello, client\n",
 			requestHeaders: map[string][]string{
 				"Accept-Encoding": {
@@ -51,6 +85,7 @@ func TestExecute(t *testing.T) {
 		},
 		{
 			name:                 "making a request to a tls server with insecure off",
+			method:               http.MethodGet,
 			expectedResponseBody: "Hello, client\n",
 			tls:                  true,
 			err:                  "x509: “Acme Co” certificate is not trusted",
@@ -71,11 +106,13 @@ func TestExecute(t *testing.T) {
 
 			var receivedHeaders http.Header
 			var requestBody string
+			var method string
 
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				receivedHeaders = r.Header
+				method = r.Method
 
-				if bodyBytes, err := ioutil.ReadAll(r.Body); err != nil {
+				if bodyBytes, err := ioutil.ReadAll(r.Body); err == nil {
 					requestBody = string(bodyBytes)
 				}
 
@@ -114,6 +151,7 @@ func TestExecute(t *testing.T) {
 				assert.Equal(t, ts.requestHeaders, receivedHeaders)
 				assert.Equal(t, ts.expectedRequestBody, requestBody)
 				assert.Equal(t, ts.expectedResponseBody, responseBody.String())
+				assert.Equal(t, ts.method, method)
 			}
 		})
 	}

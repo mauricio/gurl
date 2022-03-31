@@ -26,7 +26,7 @@ func Execute(c *Config) error {
 	var r io.Reader
 	var tlsConfig *tls.Config
 
-	if c.Data == "" {
+	if c.Data != "" {
 		r = bytes.NewBufferString(c.Data)
 	}
 
